@@ -1,5 +1,7 @@
 # OmniDesk
 
+[![CI](https://github.com/Naveenkumar75/omnidesk/actions/workflows/ci.yml/badge.svg)](https://github.com/Naveenkumar75/omnidesk/actions/workflows/ci.yml)
+
 Multi-tenant customer-support backend written in Go, backed by PostgreSQL.
 
 **Status:** Milestone 1 (foundation) complete. Ticketing and AI features are planned.
