@@ -1,0 +1,102 @@
+[
+ {
+  "q": "How do I reset my password?",
+  "doc": "password-reset.md"
+ },
+ {
+  "q": "My reset link stopped working, what now?",
+  "doc": "password-reset.md"
+ },
+ {
+  "q": "I can't access my email anymore and need to sign in",
+  "doc": "password-reset.md"
+ },
+ {
+  "q": "Where can I download previous invoices?",
+  "doc": "billing.md"
+ },
+ {
+  "q": "How do I change the credit card on my account?",
+  "doc": "billing.md"
+ },
+ {
+  "q": "Can I get my money back for an annual plan?",
+  "doc": "billing.md"
+ },
+ {
+  "q": "What is the first response time for urgent tickets?",
+  "doc": "sla.md"
+ },
+ {
+  "q": "Does the response clock keep running while waiting for the customer?",
+  "doc": "sla.md"
+ },
+ {
+  "q": "How can an admin export tickets to CSV?",
+  "doc": "data-export.md"
+ },
+ {
+  "q": "How long is the export download link valid?",
+  "doc": "data-export.md"
+ },
+ {
+  "q": "How do I invite a new teammate?",
+  "doc": "user-roles.md"
+ },
+ {
+  "q": "Can agents change workspace settings?",
+  "doc": "user-roles.md"
+ },
+ {
+  "q": "Do you support single sign-on with SAML?",
+  "doc": null
+ },
+ {
+  "q": "What is the weather like in Chennai today?",
+  "doc": null
+ },
+ {
+  "q": "Can I integrate with Salesforce?",
+  "doc": null
+ },
+ {
+  "q": "Can I get a refund for my annual plan?",
+  "doc": "billing.md"
+ },
+ {
+  "q": "I forgot my password",
+  "doc": "password-reset.md"
+ },
+ {
+  "q": "How often are invoices sent?",
+  "doc": "billing.md"
+ },
+ {
+  "q": "What are the support hours for response targets?",
+  "doc": "sla.md"
+ },
+ {
+  "q": "Do attachments get included when I export?",
+  "doc": "data-export.md"
+ },
+ {
+  "q": "How long does an invitation email stay valid?",
+  "doc": "user-roles.md"
+ },
+ {
+  "q": "Who is allowed to change someone's role?",
+  "doc": "user-roles.md"
+ },
+ {
+  "q": "Is there a mobile app for iOS?",
+  "doc": null
+ },
+ {
+  "q": "How do I delete my whole account permanently?",
+  "doc": null
+ },
+ {
+  "q": "Do you offer phone support?",
+  "doc": null
+ }
+]

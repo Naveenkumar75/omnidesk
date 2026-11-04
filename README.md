@@ -4,7 +4,7 @@
 
 Multi-tenant customer-support backend written in Go, backed by PostgreSQL.
 
-**Status:** Milestone 1 (foundation) and Milestone 2 (ticketing) complete. SLA workers and AI features are planned.
+**Status:** Foundation, ticketing and a first AI layer (RAG + MCP) are in place. SLA workers are planned.
 
 ## What works today
 
@@ -19,7 +19,7 @@ Multi-tenant customer-support backend written in Go, backed by PostgreSQL.
 
 ## Stack
 
-Go · chi · PostgreSQL 15 · Docker Compose · bcrypt · JWT (HS256)
+Go · chi · PostgreSQL 15 + pgvector · Docker Compose · bcrypt · JWT (HS256) · Python · FastAPI · MCP
 
 ## Run locally
 
@@ -50,6 +50,15 @@ curl -XPOST localhost:8080/api/v1/auth/login \
 | GET | `/api/v1/tickets/{id}` | Bearer | Ticket plus status history |
 | POST | `/api/v1/tickets/{id}/transition` | Bearer | Move to a new status |
 
+## AI layer (`ai/`)
+
+A separate FastAPI service that adds retrieval-augmented reply suggestions and an MCP server. See [ai/README.md](ai/README.md) for details, the evaluation results and known limits.
+
+- Verifies the **same JWT** as the Go API; the tenant for every knowledge-base query comes from the token.
+- Documents are chunked, embedded and stored in **pgvector**; search is cosine similarity filtered by tenant.
+- `/suggest` returns relevant passages, and an LLM-drafted answer when an API key is configured. If nothing relevant is found it says so instead of guessing.
+- An **MCP server** exposes read-only tools (`list_tickets`, `get_ticket`, `search_knowledge_base`, `suggest_reply`) with the caller's own token.
+
 ## Design rule
 
 Every tenant-owned query must be scoped by the `tenant_id` from the JWT claims, never from request input.
@@ -58,4 +67,4 @@ Every tenant-owned query must be scoped by the `tenant_id` from the JWT claims, 
 
 1. Async SLA workers (goroutines + Redis)
 2. Assignment, comments and attachments
-3. AI layer: RAG-based answer suggestions (pgvector) and an MCP server
+3. Semantic embeddings (replace the lexical baseline) and a larger evaluation set

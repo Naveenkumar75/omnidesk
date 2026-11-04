@@ -25,8 +25,8 @@ func Load() (Config, error) {
 	if c.DatabaseURL == "" {
 		return c, errors.New("DATABASE_URL is required")
 	}
-	if len(c.JWTSecret) < 16 {
-		return c, errors.New("JWT_SECRET is required (at least 16 characters)")
+	if len(c.JWTSecret) < 32 {
+		return c, errors.New("JWT_SECRET is required (at least 32 characters)")
 	}
 	return c, nil
 }
