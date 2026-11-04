@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: omnidesk
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-omnidesk_dev}
+      POSTGRES_DB: omnidesk
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - omnidesk_v2_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U omnidesk"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  omnidesk_v2_pgdata:
