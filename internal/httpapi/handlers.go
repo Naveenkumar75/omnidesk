@@ -33,6 +33,13 @@ func (a *API) Router() http.Handler {
 		r.Group(func(r chi.Router) {
 			r.Use(a.Issuer.Middleware)
 			r.Get("/me", a.me)
+
+			r.Route("/tickets", func(r chi.Router) {
+				r.Post("/", a.createTicket)
+				r.Get("/", a.listTickets)
+				r.Get("/{id}", a.getTicket)
+				r.Post("/{id}/transition", a.transitionTicket)
+			})
 		})
 	})
 	return r
