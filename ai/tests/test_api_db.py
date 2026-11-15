@@ -26,15 +26,20 @@ CREATE TABLE IF NOT EXISTS users (id SERIAL PRIMARY KEY, tenant_id INT NOT NULL 
 """
 
 
-def make_tenant(conn, label):
+def bearer(user_id, tenant_id, role):
+    claims = {"user_id": user_id, "tenant_id": tenant_id, "role": role, "iss": "omnidesk",
+              "aud": ["omnidesk-api"], "exp": int(time.time()) + 3600}
+    return {"Authorization": f"Bearer {jwt.encode(claims, SECRET, algorithm='HS256')}"}
+
+
+def make_tenant(conn, label, role="admin"):
     n = time.time_ns()
     t = conn.execute("INSERT INTO tenants (name, domain) VALUES (%s, %s) RETURNING id", (label, f"{label}{n}.test")).fetchone()[0]
     u = conn.execute(
-        "INSERT INTO users (tenant_id, email, role, password_hash) VALUES (%s, %s, 'admin', 'x') RETURNING id",
-        (t, f"{label}{n}@x.test"),
+        "INSERT INTO users (tenant_id, email, role, password_hash) VALUES (%s, %s, %s, 'x') RETURNING id",
+        (t, f"{label}{n}@x.test", role),
     ).fetchone()[0]
-    token = jwt.encode({"user_id": u, "tenant_id": t, "role": "admin"}, SECRET, algorithm="HS256")
-    return {"Authorization": f"Bearer {token}"}
+    return bearer(u, t, role)
 
 
 def make_client(**overrides):
@@ -61,6 +66,16 @@ def test_auth_required():
     with TestClient(make_client()) as c:
         assert c.post("/kb/search", json={"query": "x"}).status_code == 401
         assert c.post("/kb/search", json={"query": "x"}, headers={"Authorization": "Bearer nope"}).status_code == 401
+
+
+def test_only_admins_can_ingest():
+    with psycopg.connect(URL, autocommit=True) as conn:
+        agent = make_tenant(conn, "agentonly", role="agent")
+    with TestClient(make_client()) as c:
+        r = c.post("/kb/documents", json={"title": "t", "content": REFUND}, headers=agent)
+        assert r.status_code == 403
+        # Agents can still search and get suggestions.
+        assert c.post("/kb/search", json={"query": "refund"}, headers=agent).status_code == 200
 
 
 def test_ingest_search_suggest_and_tenant_isolation(tenants):
