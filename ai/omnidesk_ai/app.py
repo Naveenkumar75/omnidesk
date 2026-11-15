@@ -5,7 +5,7 @@ from fastapi import FastAPI, HTTPException
 from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
 
-from .auth import CurrentIdentity, Identity
+from .auth import AdminIdentity, CurrentIdentity, Identity
 from .chunking import chunk_text
 from .config import Settings, load_settings
 from .db import KnowledgeBase
@@ -54,7 +54,7 @@ def create_app(
         return {"status": "ok"}
 
     @app.post("/kb/documents", status_code=201)
-    def add_document(body: DocumentIn, who: Identity = CurrentIdentity):
+    def add_document(body: DocumentIn, who: Identity = AdminIdentity):
         chunks = chunk_text(body.content)
         if not chunks:
             raise HTTPException(status_code=400, detail="document has no text")

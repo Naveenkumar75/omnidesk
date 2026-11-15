@@ -3,6 +3,7 @@ package ticket
 import (
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestCanTransition(t *testing.T) {
@@ -48,5 +49,29 @@ func TestValid(t *testing.T) {
 	}
 	if !Urgent.Valid() || Priority("x").Valid() {
 		t.Error("priority validation wrong")
+	}
+}
+
+func TestDeadlines(t *testing.T) {
+	created := time.Date(2026, 1, 1, 9, 0, 0, 0, time.UTC)
+	fr, res := Deadlines(Urgent, created)
+	if !fr.Equal(created.Add(time.Hour)) || !res.Equal(created.Add(4*time.Hour)) {
+		t.Errorf("urgent: got %v / %v", fr, res)
+	}
+	for _, p := range []Priority{Low, Normal, High, Urgent} {
+		s := SLAFor(p)
+		if s.FirstResponse <= 0 || s.Resolution <= s.FirstResponse {
+			t.Errorf("%s: resolution target must exceed first-response target: %+v", p, s)
+		}
+	}
+	if SLAFor("bogus") != SLAFor(Normal) {
+		t.Error("unknown priority should fall back to normal")
+	}
+	// Higher priority must never get a looser target.
+	order := []Priority{Low, Normal, High, Urgent}
+	for i := 1; i < len(order); i++ {
+		if SLAFor(order[i]).FirstResponse > SLAFor(order[i-1]).FirstResponse {
+			t.Errorf("%s has a looser first-response target than %s", order[i], order[i-1])
+		}
 	}
 }

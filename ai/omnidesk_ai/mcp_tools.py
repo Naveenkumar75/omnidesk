@@ -36,11 +36,14 @@ class OmniDeskClient:
         resp.raise_for_status()
         return resp.json()
 
-    def list_tickets(self, status: str | None = None) -> list[dict]:
+    def list_tickets(self, status: str | None = None, limit: int = 50) -> list[dict]:
+        """Newest tickets first (the first page; the API paginates with a cursor)."""
         if status is not None and status not in VALID_STATUSES:
             raise ValueError(f"status must be one of {sorted(VALID_STATUSES)}")
-        params = {"status": status} if status else None
-        return self._request("GET", f"{self.api_url}/api/v1/tickets", params=params)
+        params: dict = {"limit": min(max(limit, 1), 100)}
+        if status:
+            params["status"] = status
+        return self._request("GET", f"{self.api_url}/api/v1/tickets", params=params)["tickets"]
 
     def get_ticket(self, ticket_id: int) -> dict:
         if ticket_id < 1:

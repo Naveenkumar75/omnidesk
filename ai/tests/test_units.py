@@ -1,5 +1,6 @@
 import json
 import math
+import time
 
 import httpx
 import jwt
@@ -41,14 +42,26 @@ def test_chunking_respects_limit_and_keeps_content():
         chunk_text("x", max_chars=10)
 
 
+def go_token(secret=SECRET, **overrides):
+    """A token shaped like the Go API's (internal/auth.Issue)."""
+    claims = {"user_id": 4, "tenant_id": 9, "role": "admin", "iss": "omnidesk",
+              "aud": ["omnidesk-api"], "exp": int(time.time()) + 3600}
+    claims.update(overrides)
+    claims = {k: v for k, v in claims.items() if v is not None}
+    return jwt.encode(claims, secret, algorithm="HS256")
+
+
 def test_decode_token_accepts_go_style_claims_and_rejects_bad_ones():
-    good = jwt.encode({"user_id": 4, "tenant_id": 9, "role": "admin"}, SECRET, algorithm="HS256")
-    who = decode_token(good, SECRET)
+    who = decode_token(go_token(), SECRET)
     assert (who.user_id, who.tenant_id, who.role) == (4, 9, "admin")
     for bad in (
-        jwt.encode({"user_id": 4, "tenant_id": 9, "role": "admin"}, "other-secret-value", algorithm="HS256"),
-        jwt.encode({"user_id": 4}, SECRET, algorithm="HS256"),  # missing tenant
-        jwt.encode({"user_id": 1, "tenant_id": 1, "role": "a", "exp": 1}, SECRET, algorithm="HS256"),  # expired
+        go_token(secret="other-secret-value"),
+        go_token(tenant_id=None),  # missing tenant
+        go_token(exp=1),  # expired
+        go_token(exp=None),  # no expiry
+        go_token(iss=None),  # no issuer
+        go_token(aud=["something-else"]),  # wrong audience
+        go_token(role="root"),  # unknown role
         "garbage",
     ):
         with pytest.raises(HTTPException) as ei:
@@ -92,13 +105,13 @@ def test_mcp_tools_send_bearer_token_and_validate_input():
             return httpx.Response(200, json={"passages": [{"title": "t"}]})
         if req.url.path.endswith("/99"):
             return httpx.Response(404, json={"error": "ticket not found"})
-        return httpx.Response(200, json=[])
+        return httpx.Response(200, json={"tickets": [], "next_cursor": None})
 
     c = _mcp_client(handler)
     assert c.list_tickets("open") == []
     assert c.search_knowledge_base("refund", top_k=50) == [{"title": "t"}]
     assert all(h == "Bearer tok" for _, _, h in calls)
-    assert "status=open" in calls[0][1]
+    assert "status=open" in calls[0][1] and "limit=50" in calls[0][1]
     with pytest.raises(ValueError):
         c.list_tickets("bogus")
     with pytest.raises(ValueError):

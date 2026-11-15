@@ -11,7 +11,7 @@ question ──embed──▶ cosine search WHERE tenant_id = <from JWT> ──�
                                                               └─ yes ─▶ (optional) LLM draft with [n] citations
 ```
 
-- **Auth:** verifies the Go API's HS256 JWT. `tenant_id` is read from the token, never from the request.
+- **Auth:** verifies the Go API's HS256 JWT, including its issuer (`omnidesk`), audience (`omnidesk-api`) and expiry. `tenant_id` is read from the token, never from the request. Ingest requires the `admin` role; agents can search and get suggestions.
 - **Isolation:** every query filters on `tenant_id`; an integration test proves tenant B cannot retrieve tenant A's text.
 - **Generation (optional):** set `ANTHROPIC_API_KEY` to draft an answer from the retrieved passages. The prompt restricts the model to the passages, asks for citations, says to admit when they are insufficient, and treats passage text as untrusted data. If the LLM call fails, the endpoint degrades to returning the passages.
 - **Startup:** waits for the Go API's migrations (it owns `tenants`/`users`) instead of crashing.
@@ -20,7 +20,7 @@ question ──embed──▶ cosine search WHERE tenant_id = <from JWT> ──�
 
 | Method | Path | Purpose |
 |---|---|---|
-| POST | `/kb/documents` | Ingest `{title, content}` |
+| POST | `/kb/documents` | Ingest `{title, content}` (admin only) |
 | POST | `/kb/search` | `{query, top_k?}` → passages with scores |
 | POST | `/suggest` | `{question}` → passages and optional drafted answer |
 | GET | `/healthz` | Liveness |
