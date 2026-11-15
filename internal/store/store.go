@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/lib/pq"
 )
@@ -15,8 +16,13 @@ import (
 //go:embed migrations
 var migrationsFS embed.FS
 
-var ErrConflict = errors.New("tenant domain or user email already exists")
-var ErrNotFound = errors.New("not found")
+var (
+	ErrConflict = errors.New("already exists")
+	ErrNotFound = errors.New("not found")
+	// ErrInvalidReference means a foreign key was rejected, e.g. assigning a
+	// ticket to a user of another tenant (the composite key forbids it).
+	ErrInvalidReference = errors.New("referenced record does not exist in this tenant")
+)
 
 type Store struct{ db *sql.DB }
 
@@ -25,13 +31,22 @@ func Open(ctx context.Context, url string) (*Store, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Bounded pool: Postgres has a hard connection limit, and an unbounded
+	// pool turns a traffic spike into "too many connections" errors.
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxIdleTime(5 * time.Minute)
 	if err := db.PingContext(ctx); err != nil {
+		db.Close()
 		return nil, err
 	}
 	return &Store{db: db}, nil
 }
 
 func (s *Store) Close() error { return s.db.Close() }
+
+// Ping checks the database is reachable (used by /readyz).
+func (s *Store) Ping(ctx context.Context) error { return s.db.PingContext(ctx) }
 
 // migrationLockKey is an arbitrary constant for pg_advisory_lock, so that two
 // replicas starting at the same time cannot run migrations concurrently.
@@ -188,8 +203,13 @@ func (s *Store) UserByEmail(ctx context.Context, email string) (User, error) {
 
 func mapErr(err error) error {
 	var pqErr *pq.Error
-	if errors.As(err, &pqErr) && pqErr.Code == "23505" {
-		return ErrConflict
+	if errors.As(err, &pqErr) {
+		switch pqErr.Code {
+		case "23505": // unique_violation
+			return ErrConflict
+		case "23503": // foreign_key_violation
+			return ErrInvalidReference
+		}
 	}
 	return err
 }

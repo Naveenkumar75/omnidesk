@@ -27,3 +27,23 @@ func TestLoadRequiresSecretAndDatabase(t *testing.T) {
 		t.Error("missing DATABASE_URL must be rejected")
 	}
 }
+
+func TestLoadOptionalSettings(t *testing.T) {
+	t.Setenv("DATABASE_URL", "postgres://x")
+	t.Setenv("JWT_SECRET", "0123456789abcdef0123456789abcdef")
+	t.Setenv("LOG_LEVEL", "debug")
+	t.Setenv("SLA_SWEEP_INTERVAL", "5s")
+	c, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if c.LogLevel.String() != "DEBUG" || c.SLASweepInterval.Seconds() != 5 {
+		t.Errorf("got level %v interval %v", c.LogLevel, c.SLASweepInterval)
+	}
+	for _, bad := range []string{"soon", "10ms"} {
+		t.Setenv("SLA_SWEEP_INTERVAL", bad)
+		if _, err := Load(); err == nil {
+			t.Errorf("SLA_SWEEP_INTERVAL=%q accepted", bad)
+		}
+	}
+}
