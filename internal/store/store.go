@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 
 	"github.com/lib/pq"
 )
@@ -32,28 +33,108 @@ func Open(ctx context.Context, url string) (*Store, error) {
 
 func (s *Store) Close() error { return s.db.Close() }
 
-// Migrate applies the embedded SQL files in filename order. Statements are
-// idempotent (IF NOT EXISTS), so it is safe to run on every start.
+// migrationLockKey is an arbitrary constant for pg_advisory_lock, so that two
+// replicas starting at the same time cannot run migrations concurrently.
+const migrationLockKey = 72_610_001
+
+// Migrate applies embedded SQL files that have not been applied yet, in
+// filename order. Each file runs in its own transaction together with the
+// insert into schema_migrations, so a failed migration leaves no partial
+// schema and is retried on the next start. Applied files are never re-run, so
+// migrations can use plain ALTER TABLE statements.
 func (s *Store) Migrate(ctx context.Context) error {
-	entries, err := migrationsFS.ReadDir("migrations")
+	names, err := migrationNames()
 	if err != nil {
 		return err
 	}
-	names := make([]string, 0, len(entries))
-	for _, e := range entries {
-		names = append(names, e.Name())
+
+	conn, err := s.db.Conn(ctx) // the advisory lock is per session, so pin one connection
+	if err != nil {
+		return err
 	}
-	sort.Strings(names)
+	defer conn.Close()
+
+	if _, err := conn.ExecContext(ctx, `SELECT pg_advisory_lock($1)`, migrationLockKey); err != nil {
+		return fmt.Errorf("acquire migration lock: %w", err)
+	}
+	defer conn.ExecContext(context.Background(), `SELECT pg_advisory_unlock($1)`, migrationLockKey) //nolint:errcheck
+
+	if _, err := conn.ExecContext(ctx, `CREATE TABLE IF NOT EXISTS schema_migrations (
+		version    TEXT PRIMARY KEY,
+		applied_at TIMESTAMPTZ NOT NULL DEFAULT now()
+	)`); err != nil {
+		return err
+	}
+
+	applied := map[string]bool{}
+	rows, err := conn.QueryContext(ctx, `SELECT version FROM schema_migrations`)
+	if err != nil {
+		return err
+	}
+	for rows.Next() {
+		var v string
+		if err := rows.Scan(&v); err != nil {
+			rows.Close()
+			return err
+		}
+		applied[v] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+
 	for _, n := range names {
+		version := strings.TrimSuffix(n, ".sql")
+		if applied[version] {
+			continue
+		}
 		b, err := migrationsFS.ReadFile("migrations/" + n)
 		if err != nil {
 			return err
 		}
-		if _, err := s.db.ExecContext(ctx, string(b)); err != nil {
+		tx, err := conn.BeginTx(ctx, nil)
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, string(b)); err != nil {
+			tx.Rollback()
 			return fmt.Errorf("migration %s: %w", n, err)
+		}
+		if _, err := tx.ExecContext(ctx, `INSERT INTO schema_migrations (version) VALUES ($1)`, version); err != nil {
+			tx.Rollback()
+			return fmt.Errorf("record migration %s: %w", n, err)
+		}
+		if err := tx.Commit(); err != nil {
+			return fmt.Errorf("commit migration %s: %w", n, err)
 		}
 	}
 	return nil
+}
+
+// LatestMigration is the version the schema reaches after Migrate. Other
+// services sharing the database (the AI service) wait for it before starting.
+func LatestMigration() (string, error) {
+	names, err := migrationNames()
+	if err != nil || len(names) == 0 {
+		return "", err
+	}
+	return strings.TrimSuffix(names[len(names)-1], ".sql"), nil
+}
+
+func migrationNames() ([]string, error) {
+	entries, err := migrationsFS.ReadDir("migrations")
+	if err != nil {
+		return nil, err
+	}
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".sql") {
+			names = append(names, e.Name())
+		}
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 type User struct {
