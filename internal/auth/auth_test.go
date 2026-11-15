@@ -5,6 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 	"time"
+
+	"github.com/golang-jwt/jwt/v5"
 )
 
 func TestPasswordHashing(t *testing.T) {
@@ -92,5 +94,63 @@ func TestMiddleware(t *testing.T) {
 	}
 	if got := do("Bearer nope"); got != http.StatusUnauthorized {
 		t.Errorf("bad token: got %d", got)
+	}
+}
+
+func TestPasswordLengthLimits(t *testing.T) {
+	if _, err := HashPassword("short"); err != ErrPasswordLength {
+		t.Errorf("short password: got %v", err)
+	}
+	// bcrypt would silently ignore bytes past 72 (or error); we refuse them.
+	long := make([]byte, MaxPasswordLen+1)
+	for i := range long {
+		long[i] = 'a'
+	}
+	if _, err := HashPassword(string(long)); err != ErrPasswordLength {
+		t.Errorf("73-byte password: got %v", err)
+	}
+	if _, err := HashPassword(string(long[:MaxPasswordLen])); err != nil {
+		t.Errorf("72-byte password: %v", err)
+	}
+}
+
+// Tokens must carry our issuer and audience; a token with the same secret but
+// minted by something else is rejected.
+func TestParseRequiresIssuerAndAudience(t *testing.T) {
+	secret := "0123456789abcdef"
+	forge := func(c jwt.Claims) string {
+		s, _ := jwt.NewWithClaims(jwt.SigningMethodHS256, c).SignedString([]byte(secret))
+		return s
+	}
+	exp := jwt.NewNumericDate(time.Now().Add(time.Hour))
+	i := NewIssuer(secret, time.Hour)
+	cases := map[string]Claims{
+		"no issuer":    {UserID: 1, TenantID: 1, Role: "admin", RegisteredClaims: jwt.RegisteredClaims{Audience: jwt.ClaimStrings{TokenAudience}, ExpiresAt: exp}},
+		"bad audience": {UserID: 1, TenantID: 1, Role: "admin", RegisteredClaims: jwt.RegisteredClaims{Issuer: TokenIssuer, Audience: jwt.ClaimStrings{"other"}, ExpiresAt: exp}},
+		"no expiry":    {UserID: 1, TenantID: 1, Role: "admin", RegisteredClaims: jwt.RegisteredClaims{Issuer: TokenIssuer, Audience: jwt.ClaimStrings{TokenAudience}}},
+		"unknown role": {UserID: 1, TenantID: 1, Role: "root", RegisteredClaims: jwt.RegisteredClaims{Issuer: TokenIssuer, Audience: jwt.ClaimStrings{TokenAudience}, ExpiresAt: exp}},
+		"no tenant":    {UserID: 1, Role: "admin", RegisteredClaims: jwt.RegisteredClaims{Issuer: TokenIssuer, Audience: jwt.ClaimStrings{TokenAudience}, ExpiresAt: exp}},
+	}
+	for name, c := range cases {
+		if _, err := i.Parse(forge(c)); err == nil {
+			t.Errorf("%s: token accepted", name)
+		}
+	}
+}
+
+func TestRequireRole(t *testing.T) {
+	i := NewIssuer("0123456789abcdef", time.Hour)
+	h := i.Middleware(RequireRole(RoleAdmin)(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})))
+	for role, want := range map[string]int{RoleAdmin: http.StatusNoContent, RoleAgent: http.StatusForbidden} {
+		tok, _ := i.Issue(1, 1, role)
+		req := httptest.NewRequest(http.MethodGet, "/", nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != want {
+			t.Errorf("%s: got %d, want %d", role, rec.Code, want)
+		}
 	}
 }
